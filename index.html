@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登入｜考勤系統</title>
+<link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
+<script src="cloud.js"></script>
+<style>
+*{box-sizing:border-box}body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,'Noto Sans',sans-serif;margin:0;background:#f6f7fb;color:#222}
+.container{max-width:980px;margin:40px auto;padding:0 16px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:20px;margin-bottom:16px}
+h1,h2{margin:0 0 12px}
+input,button,select{font-size:16px;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;outline:none}
+input:focus,select:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+button{background:#111827;color:#fff;border:0;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{border-top:1px solid #eee;padding:10px 8px;text-align:left}
+.table thead th{border-top:0;color:#6b7280;font-weight:600}
+.badge{font-size:12px;color:#6b7280}
+.right{margin-left:auto}
+.muted{color:#6b7280}
+.link{color:#2563eb;cursor:pointer}
+</style>
+
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <h1>登入</h1>
+    <div class="row">
+      <input id="acc" placeholder="帳號（預設：admin）">
+      <input id="pwd" type="password" placeholder="密碼（預設：admin123）">
+      <button id="btnLogin">登入</button>
+      <div class="right badge" id="version"></div>
+    </div>
+    <div class="muted" id="msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>同步設定（可選，不用改檔）</h2>
+    <div class="row" style="gap:6px;align-items:stretch">
+      <textarea id="cfg" style="flex:1;min-height:88px" placeholder='貼上 firebaseConfig JSON（例如：{"apiKey":"...","projectId":"...","appId":"..."}）'></textarea>
+      <div class="row" style="flex-direction:column;gap:8px;min-width:160px">
+        <button id="saveCfg">儲存設定</button>
+        <button id="enableCloud">啟用雲端</button>
+        <button id="push">上傳本機 → 雲端</button>
+        <button id="pull">下載雲端 → 合併</button>
+      </div>
+    </div>
+    <div class="muted">不想用雲端可忽略；若要使用，將 Firebase 專案的 <b>Web App 設定</b> 物件貼到左邊，按「儲存設定 → 啟用雲端」。</div>
+  </div>
+</div>
+
+<script>
+const KEY='yihong_attendance_v1';
+function dbLoad(){ try{return JSON.parse(localStorage.getItem(KEY)||'{}')}catch(_){return {}} }
+function dbSave(d){ localStorage.setItem(KEY, JSON.stringify(d)); }
+
+// 版本與預設帳號種子
+(function seed(){
+  document.getElementById('version').textContent='v1.0 新專案';
+  const db = dbLoad();
+  db.shops = db.shops || [{id:'shop_main',name:'主店'}];
+  db.users = db.users || [];
+  if (!db.users.length) {
+    db.users.push({ id:'u_admin', username:'admin', password:'admin123', name:'管理者', role:'admin', wage:200, lastShopId:'shop_main' });
+    db.shopMembers = db.shopMembers || [];
+    db.shopMembers.push({ shopId:'shop_main', userId:'u_admin' });
+    dbSave(db);
+    document.getElementById('msg').textContent='已自動建立預設帳號：admin / admin123';
+  } else {
+    document.getElementById('msg').textContent='可直接登入。';
+  }
+})();
+
+// 登入
+document.getElementById('btnLogin').addEventListener('click', ()=>{
+  const a=document.getElementById('acc').value.trim();
+  const p=document.getElementById('pwd').value;
+  const db=dbLoad();
+  const u=(db.users||[]).find(x=>String(x.username).toLowerCase()===a.toLowerCase() && String(x.password)===p);
+  if(!u){ alert('帳號或密碼錯誤'); return; }
+  sessionStorage.setItem('yh_current_user', JSON.stringify(u));
+  localStorage.setItem('yh_current_user_persist', JSON.stringify(u));
+  location.href='dashboard.html';
+});
+
+// 同步設定 UI
+document.getElementById('saveCfg').addEventListener('click', ()=>{
+  try{
+    const cfg = JSON.parse(document.getElementById('cfg').value);
+    CloudSync.saveConfig(cfg);
+    alert('已儲存設定');
+  }catch(e){ alert('JSON 格式錯誤'); }
+});
+document.getElementById('enableCloud').addEventListener('click', async()=>{
+  const ok = await CloudSync.enable();
+  alert(ok?'雲端已啟用（匿名登入）':'未設定或初始化失敗');
+});
+document.getElementById('push').addEventListener('click', async()=>{
+  const ok = await CloudSync.push(); alert(ok?'已上傳':'上傳失敗');
+});
+document.getElementById('pull').addEventListener('click', async()=>{
+  const ok = await CloudSync.pull(); alert(ok?'已下載合併':'下載失敗');
+});
+</script>
+</body>
+</html>

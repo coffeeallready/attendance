@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>員工打卡｜考勤系統</title>
+<link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
+<script src="cloud.js"></script>
+<style>
+*{box-sizing:border-box}body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,'Noto Sans',sans-serif;margin:0;background:#f6f7fb;color:#222}
+.container{max-width:980px;margin:40px auto;padding:0 16px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:20px;margin-bottom:16px}
+h1,h2{margin:0 0 12px}
+input,button,select{font-size:16px;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;outline:none}
+input:focus,select:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+button{background:#111827;color:#fff;border:0;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{border-top:1px solid #eee;padding:10px 8px;text-align:left}
+.table thead th{border-top:0;color:#6b7280;font-weight:600}
+.badge{font-size:12px;color:#6b7280}
+.right{margin-left:auto}
+.muted{color:#6b7280}
+.link{color:#2563eb;cursor:pointer}
+</style>
+
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <div class="row">
+      <h1>員工打卡</h1>
+      <div class="right"><button id="toDash">回後台</button></div>
+    </div>
+    <div class="row">
+      <div id="uName" class="badge">未登入</div>
+      <div class="badge right" id="todayInfo">（今日班表：可打卡）</div>
+    </div>
+    <div class="row">
+      <button id="btnIn">上班</button>
+      <button id="btnBreakOut">休息開始</button>
+      <button id="btnBreakIn">休息結束</button>
+      <button id="btnOut">下班</button>
+      <button class="right" id="sync">雲端同步</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>近期打卡紀錄</h2>
+    <div id="logs"></div>
+  </div>
+</div>
+
+<script>
+const KEY='yihong_attendance_v1';
+function dbLoad(){ try{return JSON.parse(localStorage.getItem(KEY)||'{}')}catch(_){return {}} }
+function dbSave(d){ localStorage.setItem(KEY, JSON.stringify(d)); }
+const getUser=()=>{ try{ const j=sessionStorage.getItem('yh_current_user')||localStorage.getItem('yh_current_user_persist'); return j?JSON.parse(j):null; }catch(_){ return null; } };
+const nowLocalString=()=>{ const d=new Date(); const Y=d.getFullYear(), M=String(d.getMonth()+1).padStart(2,'0'), D=String(d.getDate()).padStart(2,'0'); const h=String(d.getHours()).padStart(2,'0'), m=String(d.getMinutes()).padStart(2,'0'); return `${Y}-${M}-${D} ${h}:${m}`; };
+
+document.getElementById('toDash').onclick=()=>location.href='dashboard.html';
+document.getElementById('sync').onclick=async()=>{ const ok=await CloudSync.enable(); if(ok){ await CloudSync.push(); await CloudSync.pull(); renderLogs(); alert('已同步'); } else { alert('未設定雲端'); }};
+
+function pushRecord(type){
+  const u=getUser(); if(!u){ alert('未登入'); return; }
+  const db=dbLoad();
+  const shopId = u.lastShopId || (db.shopMembers||[]).find(m=>m.userId===u.id)?.shopId || (db.shops?.[0]?.id||'shop_main');
+  const rid='rc_'+Math.random().toString(36).slice(2,10);
+  (db.records=db.records||[]).push({ id:rid, userId:u.id, type, ts:nowLocalString(), shopId, note:'' });
+  db.meta=db.meta||{}; db.meta.updatedAt=nowLocalString();
+  dbSave(db);
+}
+
+async function doPunch(type){
+  pushRecord(type);
+  try{ if(await CloudSync.enable()){ await CloudSync.push(); } }catch(_){}
+  renderLogs();
+  alert('已打卡：'+type);
+}
+
+['btnIn','btnBreakOut','btnBreakIn','btnOut'].forEach(id=>{
+  document.getElementById(id).addEventListener('click', ()=>{
+    const map={btnIn:'work_in',btnBreakOut:'break_out',btnBreakIn:'break_in',btnOut:'work_out'};
+    doPunch(map[id]);
+  });
+});
+
+function renderLogs(){
+  const u=getUser(); const nameEl=document.getElementById('uName');
+  if(!u){ nameEl.textContent='未登入'; return; }
+  nameEl.textContent = `${u.name||u.username}（${u.role||'employee'}）`;
+  const db=dbLoad();
+  const recs=(db.records||[]).filter(r=>r.userId===u.id).sort((a,b)=>String(b.ts).localeCompare(String(a.ts))).slice(0,50);
+  let h='<table class="table"><thead><tr><th>時間</th><th>類型</th><th>備註</th></tr></thead><tbody>';
+  for(const r of recs){ h+=`<tr><td>${r.ts}</td><td>${r.type}</td><td>${r.note||''}</td></tr>`; }
+  h+='</tbody></table>';
+  document.getElementById('logs').innerHTML = h;
+}
+renderLogs();
+</script>
+</body>
+</html>
